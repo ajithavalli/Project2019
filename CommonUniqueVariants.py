@@ -28,10 +28,11 @@ def parseVCF(vcffile):
 		if sampleName and "_known_mutations" in sampleName:
 				vcf_positions[sampleName].add(chrm + "_" + str(record.POS))
 				alts = record.ALT
+				keyh = chrm + "_" + str(record.POS)
+				variant_features[sampleName][keyh] = {}
 				for alt in alts:
-					keyh = "_".join([chrm, str(record.POS), record.REF, str(alt)])
-					vcf_variants[sampleName].add(keyh)
-					for field in features:
+					vcf_variants[sampleName].add("_".join([chrm, str(record.POS), record.REF, str(alt)]))
+				for field in features:
 						if field in ('AC', 'AF'):
 							variant_features[sampleName][keyh][field] = record.INFO[field][0]
 						elif field in ('DP', 'ExcessHet','FS','MQ','QD'):
@@ -43,18 +44,18 @@ def parseVCF(vcffile):
 		else:
 			for sample in samples:
 				sampleName = vcffile.split("/")[-1].replace(".vcf", "") + "_" + sample
-				vcf_positions[sampleName].add(chrm + "_" + str(record.POS))
 				try:
 				    alts = record.genotype(sample).gt_bases.split("|")
 				except:
 					continue
+				vcf_positions[sampleName].add(chrm + "_" + str(record.POS))
+				keyh = chrm + "_" + str(record.POS)
 				if len(alts) == 1:
 					alts = record.genotype(sample).gt_bases.split("/")
 				for alt in alts:
-					keyh = "_".join([chrm, str(record.POS), record.REF, str(alt)])
-					vcf_variants[sampleName].add(keyh)
-					variant_features[sampleName][keyh] = {}
-					for field in features:
+					vcf_variants[sampleName].add("_".join([chrm, str(record.POS), record.REF, str(alt)]))
+				variant_features[sampleName][keyh] = {}
+				for field in features:
 						if field in ('AF', 'AC'):
 							variant_features[sampleName][keyh][field] = record.INFO[field][0]
 						elif field in ('ExcessHet','FS','MQ','QD') and field in record.INFO:
@@ -94,9 +95,9 @@ def common_mutations(vcf_positions, vcf_variants, cosmicMutations):
 	## Common across all samples:
 	for sample in samples:
 		if allCommon == set():
-			allCommon = vcf_variants[sample]
+			allCommon = vcf_positions[sample]
 		else:
-			allCommon = allCommon.intersection(vcf_variants[sample])
+			allCommon = allCommon.intersection(vcf_positions[sample])
 	print("Common Across all samples:", allCommon)
 
 	## Common variants between every 2 samples and with cosmic:
@@ -117,16 +118,27 @@ def common_mutations(vcf_positions, vcf_variants, cosmicMutations):
 	line = ["Sample"]
 	features = ['AF', 'AC', 'DP', 'ExcessHet','FS','MQ','QD',
 	'GQ', 'DP', 'QUAL']
+	alreadyseen = set()
 	for variant in allCommon: 
 		for field in features:
-			line.append(variant + "_" + field)
+			k = variant + "_" + field
+			if k in alreadyseen:
+				continue
+			else:
+				line.append(k)
+				alreadyseen.add(k)
 	fout.writelines("\t".join(line) + "\n")
 
-
 	for sample in samples:
+		alreadyseen = set()
 		line = [sample]
 		for variant in allCommon:
 			for field in features:
+				k = variant + "_" + field
+				if k in alreadyseen:
+					continue
+				else:
+					alreadyseen.add(k)
 				if field in variant_features[sample][variant]:
 					line.append(str(variant_features[sample][variant][field]))
 				else:
